@@ -124,6 +124,116 @@ class pdf extends TcpdfFpdi {
 
         return $totalpagecount;
     }
+	
+	 /**
+     * @method  combine_pdfs_gs
+     * @param   $pdflist
+     * @param   $outfilename
+     * @return  int
+     * @info
+     *      Combines multiple PDF files.
+     *      If a single PDF file is provided in the $pdflist array, the file it's copied from $pdflist[0] to $outfilename
+     *
+     *      Returns:
+     *      - Positive number on success, reflecting the total number of pages from the combined PDF file
+     *
+     *      - On negative number return:
+     *          -1 = Empty PDF List ($pdflist param)
+     *          -2 = None of the provided files in $pdflist array exists
+     *          -3 = Something went wrong on converting, the output file $outfilename was not created
+     */
+    public function combine_pdfs_gs($pdflist, $outfilename) {
+        $count = 0;
+        // If no PDF file was provided, return -1
+        if(!(is_array($pdflist) && ($count = count($pdflist)) > 0))
+            return -1;
+
+        // If there's a single element in the $pdflist array
+        if($count == 1) {
+
+            // and the file exists, copy it and
+            if(
+                    file_exists($source = reset($pdflist))
+                &&  copy($source, $outfilename)
+            ) {
+                // return the page count
+                return $this->get_page_count_gs($outfilename);
+            } else {
+                // if the file does not exist, return -2 error
+                return -2;
+            }
+        } else {
+            // If there are multiple elements in the $pdflist array
+            $batch_files = '';
+            $valid_count = 0;
+
+            // for each element in the array
+            foreach($pdflist as $pdf_file) {
+                // check if the file exist, and if it does
+                if(file_exists($pdf_file)) {
+                    $valid_count++;
+                    // add it to the batch list
+                    $batch_files .= $pdf_file . ' ';
+                }
+            }
+
+            // Get rid of the last space
+            $batch_files = rtrim($batch_files);
+
+            // Now, if we have existing files in the array
+            if($valid_count > 0) {
+                // If there's a single one, just copy it
+                if($valid_count == 1) {
+                    copy($batch_files, $outfilename);
+                } else {
+                    // otherwise, use Ghostscript to count the page numbers
+                    shell_exec('gs -dNOPAUSE -sDEVICE=pdfwrite -sOUTPUTFILE='.$outfilename.' -dBATCH ' . $batch_files);
+                }
+
+                // If the output file exists
+                if(file_exists($outfilename)) {
+
+                    // return the page count
+                    return $this->get_page_count_gs($outfilename);
+
+                } else {
+
+                    // otherwise, return error -3
+                    return -3;
+                }
+            } else {
+
+                // If no valid PDFs in the array, return -2 error
+                return -2;
+
+            }
+        }
+    }
+
+
+    /**
+     * @method  get_page_count_gs
+     * @param   $pdf
+     * @return  int
+     * @desc    Gets the total number of pages in a PDF
+     *          Returns:
+     *              - Positive integer with the page numbers on success
+     *              - Negative numbers if errors occurred, as follows:
+     *                  -2 = PDF file does not exist
+     *                  -1 = There was an error while trying to read the page numbers
+     */
+    private function get_page_count_gs($pdf) {
+        if(!file_exists($pdf))
+            return -2;
+
+        exec(sprintf('gs -q -dNODISPLAY -c "(%s) (r) file runpdfbegin pdfpagecount = quit"', $pdf), $res, $ret);
+
+        if(0 <> $ret)
+            return -1;
+        else
+            return intval($res[0]);
+    }
+	
 
     /**
      * The number of the current page in the PDF being processed

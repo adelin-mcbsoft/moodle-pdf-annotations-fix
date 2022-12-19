@@ -281,7 +281,7 @@ class combined_document {
         $tmpfile = $tmpdir . '/' . document_services::COMBINED_PDF_FILENAME;
 
         try {
-            $pagecount = $pdf->combine_pdfs($compatiblepdfs, $tmpfile);
+            $pagecount = $pdf->combine_pdfs_gs($compatiblepdfs, $tmpfile);
             $pdf->Close();
         } catch (\Exception $e) {
             // Unable to combine the PDF.
