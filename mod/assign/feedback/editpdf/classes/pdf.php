@@ -124,8 +124,9 @@ class pdf extends TcpdfFpdi {
 
         return $totalpagecount;
     }
-	
-	 /**
+
+
+    /**
      * @method  combine_pdfs_gs
      * @param   $pdflist
      * @param   $outfilename
@@ -139,74 +140,94 @@ class pdf extends TcpdfFpdi {
      *
      *      - On negative number return:
      *          -1 = Empty PDF List ($pdflist param)
-     *          -2 = None of the provided files in $pdflist array exists
+     *          -2 = None of the provided files in $pdflist array are valid and/or exists
      *          -3 = Something went wrong on converting, the output file $outfilename was not created
      */
     public function combine_pdfs_gs($pdflist, $outfilename) {
-        $count = 0;
-        // If no PDF file was provided, return -1
-        if(!(is_array($pdflist) && ($count = count($pdflist)) > 0))
+
+        // If $pdflist is not an array, return -1
+        if(!(is_array($pdflist)))
             return -1;
 
-        // If there's a single element in the $pdflist array
-        if($count == 1) {
+        // Count the number of elements in the provided param
+        $count = count($pdflist);
 
-            // and the file exists, copy it and
-            if(
-                    file_exists($source = reset($pdflist))
-                &&  copy($source, $outfilename)
-            ) {
-                // return the page count
-                return $this->get_page_count_gs($outfilename);
-            } else {
-                // if the file does not exist, return -2 error
-                return -2;
-            }
-        } else {
-            // If there are multiple elements in the $pdflist array
-            $batch_files = '';
-            $valid_count = 0;
+        switch(true) {
 
-            // for each element in the array
-            foreach($pdflist as $pdf_file) {
-                // check if the file exist, and if it does
-                if(file_exists($pdf_file)) {
-                    $valid_count++;
-                    // add it to the batch list
-                    $batch_files .= $pdf_file . ' ';
-                }
-            }
+            // For the case when an empty array is provided, create a blank file and return 0 (pages)
+            case $count === 0;
+                shell_exec('gs -q -dNOPAUSE -sDEVICE=pdfwrite -o '.$outfilename);
+                return file_exists($outfilename) ? 0 : -3;
 
-            // Get rid of the last space
-            $batch_files = rtrim($batch_files);
 
-            // Now, if we have existing files in the array
-            if($valid_count > 0) {
-                // If there's a single one, just copy it
-                if($valid_count == 1) {
-                    copy($batch_files, $outfilename);
-                } else {
-                    // otherwise, use Ghostscript to count the page numbers
-                    shell_exec('gs -dNOPAUSE -sDEVICE=pdfwrite -sOUTPUTFILE='.$outfilename.' -dBATCH ' . $batch_files);
-                }
-
-                // If the output file exists
-                if(file_exists($outfilename)) {
-
+            // If there's a single element in the $pdflist array
+            case $count === 1;
+                // and the file exists, copy it and
+                if(
+                        file_exists($source = reset($pdflist))
+                    &&  copy($source, $outfilename)
+                ) {
                     // return the page count
                     return $this->get_page_count_gs($outfilename);
+                } else {
+                    // if the file does not exist, return -2 error
+                    return -2;
+                }
 
+
+            // If there are multiple elements in the $pdflist array
+            case $count > 1;
+
+                $batch_files = '';
+                $valid_count = 0;
+
+                // for each element in the array
+                foreach($pdflist as $pdf_file) {
+                    // check if the file exist, and if it does
+                    if(file_exists($pdf_file)) {
+                        $valid_count++;
+                        // add it to the batch list
+                        $batch_files .= $pdf_file . ' ';
+                    }
+                }
+
+                // Get rid of the last space
+                $batch_files = rtrim($batch_files);
+
+                // Now, if we have existing files in the array
+                if($valid_count > 0) {
+
+                    // If there's a single one
+                    if($valid_count == 1) {
+
+                        // just copy it
+                        copy($batch_files, $outfilename);
+
+                    } else {
+
+                        // otherwise, use Ghostscript to combine them
+                        shell_exec('gs -dNOPAUSE -sDEVICE=pdfwrite -sOUTPUTFILE='.$outfilename.' -dBATCH ' . $batch_files);
+
+                    }
+
+                    // If the output file exists
+                    if(file_exists($outfilename)) {
+
+                        // return the page count
+                        return $this->get_page_count_gs($outfilename);
+
+                    } else {
+
+                        // otherwise, return error -3
+                        return -3;
+                    }
                 } else {
 
-                    // otherwise, return error -3
-                    return -3;
+                    // If no valid PDFs in the array, return -2 error
+                    return -2;
+
                 }
-            } else {
 
-                // If no valid PDFs in the array, return -2 error
-                return -2;
-
-            }
         }
     }
 
