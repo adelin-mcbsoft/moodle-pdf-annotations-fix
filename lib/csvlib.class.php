@@ -120,12 +120,62 @@ class csv_import_reader {
             @unlink($tempfile);
             return false;
         }
+
+
+        /*
+         * BugFix - 30.05.2023 - Adelin Ungureanu - adelin@mcbsoft.com
+         *
+         * Bug Description:
+         * ================
+         *
+         * (Situation #1):
+         * --------------
+         * Whenever using a file clustering system, such as GlusterFS in
+         * combination with UnionFS, the read and write I/O's are redirected
+         * to different inodes on the disk:
+         *   Reads happen from the local disk, while writes pass through
+         *   GlusterFS to be confirmed among all the nodes, and only after
+         *   that they are flushed to the local disk inode
+         *
+         * In the case below, fwrite() happens in GlusterFS's buffer,
+         * while fseek() happens on the local disk.
+         * Therefore, when fgetcsv() will try to read the data,
+         * it will read from the local disk which at this point
+         * is still empty, as the data was not yet flushed to
+         * the local inode.
+         *
+         * PHP v8.1 implements fsync() to solve this matter, but
+         * unfortunately under PHP 7.4 best we can do is to flush
+         * the contents to disk (optional), close the file, clear
+         * the stat cache, and reopen the file.
+         *
+         * This way we force GlusterFS to flush the information disk,
+         * so we can have the data available for reading.
+         *
+         * (Situation #2):
+         * --------------
+         * This matter can also happen under normal disks
+         * (meaning non-clustered file-systems) if the FS's block size
+         * is bigger than the write buffer and there's a FS cache present.
+         *
+         * In this case fwrite() will write the data to the cache,
+         * however fseek() + fgetcsv() won't find it as it wasn't yet
+         * flushed to the disk.
+         * The same behavior and same solution applies.
+         *
+         */
         fwrite($fp, $content);
         fseek($fp, 0);
+        fflush($fp);
+        fclose($fp);
+        clearstatcache();
+        $fp = fopen($tempfile, 'r');;
+
         // Create an array to store the imported data for error checking.
         $columns = array();
         // str_getcsv doesn't iterate through the csv data properly. It has
         // problems with line returns.
+
         while ($fgetdata = fgetcsv($fp, 0, $csv_delimiter, $enclosure)) {
             // Check to see if we have an empty line.
             if (count($fgetdata) == 1) {
@@ -179,9 +229,12 @@ class csv_import_reader {
         $storedata = csv_export_writer::print_array($columns, ',', '"', true);
         fwrite($filepointer, $storedata);
 
+        fflush($fp);
         fclose($fp);
         unlink($tempfile);
+        fflush($filepointer);
         fclose($filepointer);
+        clearstatcache();
 
         $datacount = count($columns);
         return $datacount;
@@ -450,6 +503,7 @@ class csv_export_writer {
         }
         $delimiter = csv_import_reader::get_delimiter($this->delimiter);
         fputcsv($this->fp, $row, $delimiter, $this->csvenclosure);
+        fflush($this->fp);
     }
 
     /**
@@ -459,7 +513,8 @@ class csv_export_writer {
      * @return string       csv data.
      */
     public function print_csv_data($return = false) {
-        fseek($this->fp, 0);
+        fclose($this->fp);
+        $this->fp = fopen($this->path, 'r');
         $returnstring = '';
         while (($content = fgets($this->fp)) !== false) {
             if (!$return){
