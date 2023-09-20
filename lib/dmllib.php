@@ -370,6 +370,35 @@ function setup_DB() {
         throw $e;
     }
 
+    /*
+      # Fix for MDL-79396
+         When a MariaDB Galera node crashes / disconnects from the cluster,
+         the affected node can still connect to the database, however any query
+         performed to it fails with the following message:
+         `ERROR 1047 (08S01): WSREP has not yet prepared node for application use`
+
+         The code below watches this by making a simple SELECT query to the database.
+         In case the query fails, it means the the database is not ready to perform,
+         therefore we throw an exception with HTTP 503.
+
+         This allows the load-balancer both to skip the node, and prevents Moodle from
+         redirecting the page anywhere with a HTTP code other than 5XX.
+    */
+
+    try {
+        $DB->execute('SELECT `id` FROM `mdl_config` LIMIT 1');
+    } catch(moodle_exception $e) {
+        $header = 'HTTP/1.1 503 Service Unavailable';
+        header($header);
+        $message =      $header . PHP_EOL . PHP_EOL
+            .   'GeneratedAt: ' . __FILE__ . ':' . __LINE__ . PHP_EOL
+            .   'ErrorCode: '   . $e->errorcode . PHP_EOL
+            .   'ErrorMessage: '. $e->getMessage() . PHP_EOL;
+        throw new dml_exception('dbsessionbroken', NULL, $message);
+        # exit($message);
+    }
+
+
     $CFG->dbfamily = $DB->get_dbfamily(); // TODO: BC only for now
 
     return true;

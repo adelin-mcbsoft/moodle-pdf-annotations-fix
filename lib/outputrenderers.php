@@ -2847,6 +2847,11 @@ EOD;
             error_reporting($CFG->debug);
 
             // Output not yet started.
+            # Fix for ticket no. MDL-79396
+            $protocol = $_SERVER['SERVER_PROTOCOL'] ?? 'HTTP/1.0';
+            header($protocol . ' 503 Service Unavailable');
+
+            /*
             $protocol = (isset($_SERVER['SERVER_PROTOCOL']) ? $_SERVER['SERVER_PROTOCOL'] : 'HTTP/1.0');
             if (empty($_SERVER['HTTP_RANGE'])) {
                 @header($protocol . ' 404 Not Found');
@@ -2858,6 +2863,7 @@ EOD;
                 // this is weird but Chrome PDF viewer can be stopped only with 407!
                 @header($protocol . ' 407 Proxy Authentication Required');
             }
+            */
 
             $this->page->set_context(null); // ugly hack - make sure page context is set to something, we do not want bogus warnings here
             $this->page->set_url('/'); // no url
